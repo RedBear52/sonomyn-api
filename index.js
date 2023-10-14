@@ -124,6 +124,7 @@ const sliceOverSizedFile = async (oversizeOutputFile, filename, res) => {
 
   output.on('close', () => {
     console.log('Zip file created successfully')
+    res.set('Content-Type', 'application/zip')
     res.download(`${outputDirectory}.zip`, (err) => {
       if (err) {
         console.log(err)
