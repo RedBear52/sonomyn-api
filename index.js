@@ -42,51 +42,38 @@ app.post('/api/reduce-15mb', upload.single('inputFile'), async (req, res) => {
   const inputFile = req.file // Input file path
   const outputFilePath = `${inputFile.originalname}` // Output file path
 
-  console.log(inputFile)
-
   ffmpeg()
     .input(inputFile.path)
     .audioBitrate('96k')
     .output(outputFilePath)
     .on('end', () => {
       console.log('Bitrate conversion completed.')
-      if (fs.statSync(outputFilePath).size > 25600) {
+      if (fs.statSync(outputFilePath).size > 15000000) {
         console.log(fs.statSync(outputFilePath).size)
-        console.error(
-          'Output file is larger than 25mb. Commencing slice functions.'
+        console.log(
+          'File size stillexceeds 15MB after bitrate reduction. Slicing into smaller files'
         )
         const oversizeOutputFile = fs.readFileSync(outputFilePath)
-        // Code to take the value of inputFile.originalname, remove the file extension and then use it in the sliceDirectory variable
-        const filename = inputFile.originalname
-        const cleanedFileName = filename.replace(/\.[^/.]+$/, '')
-        sliceOverSizedFile(oversizeOutputFile, cleanedFileName).then(
-          // code to zip the slices and send them as a download
-          () => {
-            const zip = new require('node-zip')()
-            const dir = `${cleanedFileName}-slices`
-            const output = fs.createWriteStream(`${cleanedFileName}-slices.zip`)
-            const archive = archiver('zip', {
-              zlib: { level: 9 },
-            })
-            archive.pipe(output)
-            archive.directory(dir, false)
-            archive.finalize().then(() => {
-              console.log('Slices completed.')
-              res.sendFile(
-                `/Users/ryanspearman/Desktop/software_projects/ffmpegProjects/sonomyn/${cleanedFileName}-slices.zip`
-              )
-            })
-          }
-        )
+        sliceOverSizedFile(oversizeOutputFile, inputFile.originalname, res)
+        console.log('Slicing completed.')
       } else {
-        res.sendFile(
-          `/Users/ryanspearman/Desktop/software_projects/ffmpegProjects/sonomyn/${outputFilePath}`
-        ) // Send the processed file as a download
+        const filePath = path.resolve(outputFilePath)
+        res.sendFile(filePath, (err) => {
+          if (err) {
+            console.log(err)
+            res.status(500).send('Error sending audio file')
+          } else {
+            console.log('Audio file sent successfully')
+            // fs.unlinkSync(inputFile.path) // Delete input file
+            // fs.unlinkSync(outputFilePath) // Delete output file
+            console.log('Files deleted successfully.')
+          }
+        })
       }
     })
     .on('error', (err) => {
-      console.error('Error converting bitrate:', err)
-      res.status(500).json({ error: 'Bitrate conversion failed' })
+      console.log(err)
+      res.status(500).send('Error converting audio file')
     })
     .run()
 
@@ -112,7 +99,7 @@ app.post('/api/reduce-15mb', upload.single('inputFile'), async (req, res) => {
   })
 })
 
-const sliceOverSizedFile = async (oversizeOutputFile, filename) => {
+const sliceOverSizedFile = async (oversizeOutputFile, filename, res) => {
   const outputDirectory = `${filename}-slices` // Directory to save slices
 
   if (!fs.existsSync(outputDirectory)) {
@@ -132,6 +119,39 @@ const sliceOverSizedFile = async (oversizeOutputFile, filename) => {
       slice
     )
   }
+  const output = fs.createWriteStream(`${outputDirectory}.zip`)
+  const archive = archiver('zip', { zlib: { level: 9 } })
+
+  output.on('close', () => {
+    console.log('Zip file created successfully')
+    res.download(`${outputDirectory}.zip`, (err) => {
+      if (err) {
+        console.log(err)
+        res.status(500).send('Error sending zip file')
+      } else {
+        console.log('Zip file sent successfully')
+        fs.unlinkSync(`${outputDirectory}.zip`)
+        console.log('Zip file deleted successfully.')
+      }
+    })
+  })
+
+  archive.on('warning', (err) => {
+    if (err.code === 'ENOENT') {
+      console.warn(err)
+    } else {
+      throw err
+    }
+  })
+
+  archive.on('error', (err) => {
+    console.log(err)
+    res.status(500).send('Error creating zip file')
+  })
+
+  archive.pipe(output)
+  archive.directory(outputDirectory, false)
+  archive.finalize()
 }
 
 app.listen(port, () => {
