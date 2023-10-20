@@ -84,7 +84,11 @@ app.post('/api/reduce-15mb', upload.single('inputFile'), async (req, res) => {
       if (err) throw err
 
       for (const file of files) {
-        if (file.endsWith('.zip') || file.endsWith('.mp3')) {
+        if (
+          file.endsWith('.zip') ||
+          file.endsWith('.mp3') ||
+          file.endsWith('.wav')
+        ) {
           fs.unlinkSync(path.join(directory, file))
           console.log(`Deleted file: ${file}`)
         } else if (
